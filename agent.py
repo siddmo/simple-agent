@@ -1,8 +1,10 @@
 import subprocess
 import json
 import os
+import argparse
 from openai import OpenAI
 import asyncio
+import urllib.request
 
 client = OpenAI()
 
@@ -129,13 +131,62 @@ async def input_loop():
         print(f"Assistant: {agent_response}")
 
 
-async def main():
-    # Run the main loop in async mode so it executes if there are any messages in the input queue
+API_BASE = "http://localhost:8000/api"
+
+
+async def api_loop():
+    last_id = -1
+
+    # Catch up: fetch existing messages to find the latest id
+    req = urllib.request.Request(f"{API_BASE}/messages?limit=1")
+    with urllib.request.urlopen(req) as resp:
+        data = json.loads(resp.read())
+        if data["messages"]:
+            last_id = data["messages"][-1]["id"]
+
+    while True:
+        await asyncio.sleep(1)
+
+        # Poll for new user messages
+        req = urllib.request.Request(f"{API_BASE}/messages?limit=50&after_id={last_id}")
+        with urllib.request.urlopen(req) as resp:
+            data = json.loads(resp.read())
+
+        for msg in data["messages"]:
+            last_id = msg["id"]
+            if msg["role"] != "user":
+                continue
+
+            # Feed to agent
+            await inbound_q.put(msg["content"])
+
+            # Wait for agent response
+            agent_response = await outbound_q.get()
+
+            # Post agent response back to the API
+            payload = json.dumps({"role": "agent", "content": agent_response}).encode()
+            req = urllib.request.Request(
+                f"{API_BASE}/messages",
+                data=payload,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req) as resp:
+                result = json.loads(resp.read())
+                last_id = result["id"]
+
+
+async def main(interactive: bool):
     asyncio.create_task(main_loop())
 
-    # Run the input loop which continously fetches and pushes user messages
-    await input_loop()
+    if interactive:
+        await input_loop()
+    else:
+        await api_loop()
 
 
 if __name__ == '__main__':
-    asyncio.run(main())
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--interactive", action="store_true", help="Use CLI instead of chat API")
+    args = parser.parse_args()
+    asyncio.run(main(args.interactive))
