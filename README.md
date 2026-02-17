@@ -14,7 +14,7 @@ The agent gives the LLM a single `bash` tool. It figures out what commands to ru
 
 ```bash
 python3 -m venv venv
-./venv/bin/pip install openai
+./venv/bin/pip install -r requirements.txt
 export OPENAI_API_KEY="your-key-here"
 ```
 
