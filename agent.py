@@ -26,46 +26,87 @@ tools = [
 ]
 
 system_prompt = "You are a helpful coding assistant. You have access to a bash tool to execute commands on the user's machine. Use it to read files, write files, search code, run tests, and anything else needed."
+max_context_size = 128_000
+compaction_threshold = 0.8
 
-messages = [{"role": "system", "content": system_prompt}]
+# Context Management using compaction
+def compact(messages):
+    # Grab the last 5 messages - this is similar to emptying the queue in MemGPT and repopulating it with recent X messages
+    last_messages = messages[:-5]
+    messages = messages[:-1]
 
-while True:
-    # 1. Get the user input
-    user_input = input("\nYou: ")
-    if not user_input.strip():
-        continue
+    # Create summary - Replacing the working context
+    messages.append({"role": "user", "content": "Summarise the conversation so far"})
+    summary_response = client.chat.completions.create(
+        model="gpt-4.1",
+        messages=messages
+    )
 
-    # 2. Add it as message to messages
-    messages.append({"role": "user", "content": user_input})
+    # DEBUG summary
+    print(summary_response.choices[0].message.content)
 
-    # 3-4. Call the LLM and process tool calls in a loop
+    # System Prompt + Summary + last 5 messages
+    return [messages[0], summary_response.choices[0].message] + last_messages
+
+def main_loop():
+    # Context
+    messages = [{"role": "system", "content": system_prompt}]
+
     while True:
-        response = client.chat.completions.create(
-            model="gpt-4.1",
-            messages=messages,
-            tools=tools,
-        )
-        msg = response.choices[0].message
-        messages.append(msg)
+        # 1. Get the user input
+        user_input = input("\nYou: ")
+        if not user_input.strip():
+            continue
 
-        # 5. When the message is not a tool call, show it to the user
-        if not msg.tool_calls:
-            print(f"\nAssistant: {msg.content}")
-            break
+        # Support "/" commands
+        match user_input:
+            case "/compact":
+                messages = compact(messages)
+                continue
+            case "/exit":
+                exit(0)
+            case _:
+                print("Unknown command")
+                continue
 
-        # Process each tool call
-        for tool_call in msg.tool_calls:
-            args = json.loads(tool_call.function.arguments)
-            command = args["command"]
-            print(f"\n$ {command}")
+        # 2. Add it as message to messages
+        messages.append({"role": "user", "content": user_input})
 
-            result = subprocess.run(
-                command, shell=True, capture_output=True, text=True, timeout=30
+        # 3-4. Call the LLM and process tool calls in a loop
+        while True:
+            response = client.chat.completions.create(
+                model="gpt-4.1",
+                messages=messages,
+                tools=tools,
             )
-            output = result.stdout + result.stderr
+            msg = response.choices[0].message
+            messages.append(msg)
 
-            messages.append({
-                "role": "tool",
-                "tool_call_id": tool_call.id,
-                "content": output or "(no output)",
-            })
+            if response.usage.total_tokens >= max_context_size * compaction_threshold:
+                messages = compact(messages)
+                continue
+
+            # 5. When the message is not a tool call, show it to the user
+            if not msg.tool_calls:
+                print(f"\nAssistant: {msg.content}")
+                break
+
+            # Process each tool call
+            for tool_call in msg.tool_calls:
+                args = json.loads(tool_call.function.arguments)
+                command = args["command"]
+                print(f"\n$ {command}")
+
+                result = subprocess.run(
+                    command, shell=True, capture_output=True, text=True, timeout=30
+                )
+                output = result.stdout + result.stderr
+
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "content": output or "(no output)",
+                })
+
+if __name__ == '__main__':
+    main_loop()
