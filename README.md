@@ -2,6 +2,8 @@
 
 The simplest possible AI coding agent. One tool (bash), one loop.
 
+> **Note:** This code is intentionally kept simple and rough around the edges. It avoids abstractions and polished patterns to show a clear sense of progression as features are added. Don't expect production-quality code — that's by design.
+
 ## How it works
 
 ```
