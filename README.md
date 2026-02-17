@@ -22,8 +22,10 @@ export OPENAI_API_KEY="your-key-here"
 
 ## Usage
 
+### Interactive mode (CLI)
+
 ```bash
-./venv/bin/python agent.py
+./venv/bin/python agent.py --interactive
 ```
 
 Then just type what you want:
@@ -37,3 +39,42 @@ EOF
 
 $ python3 hello.py
 Hello, World!
+```
+
+### Chat UI mode (default)
+
+The agent can be used through a web-based chat interface. This requires running three things:
+
+**1. Start the backend**
+
+```bash
+./venv/bin/pip install -r chat_app/backend/requirements.txt
+./venv/bin/python -m uvicorn chat_app.backend.server:app --port 8000
+```
+
+**2. Start the frontend**
+
+```bash
+cd chat_app/frontend
+npm install
+npm run dev
+```
+
+**3. Start the agent**
+
+```bash
+./venv/bin/python agent.py
+```
+
+Open http://localhost:5173 in your browser.
+
+The agent polls the backend API for new user messages and posts its responses back. The frontend connects via SSE for real-time updates.
+
+### API
+
+The backend exposes a simple REST API:
+
+- `POST /api/messages` — send a message (`{"role": "user"|"agent", "content": "..."}`)
+- `GET /api/messages?limit=50&before_id=N&after_id=N` — fetch messages with pagination
+- `GET /api/messages/stream` — SSE endpoint for real-time updates
+- `GET /api/health` — health check
