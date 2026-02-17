@@ -176,8 +176,37 @@ async def api_loop():
                 last_id = result["id"]
 
 
+async def heartbeat_loop():
+    while True:
+        await asyncio.sleep(10)
+
+        try:
+            with open("heartbeat.md") as f:
+                content = f.read()
+        except FileNotFoundError:
+            continue
+
+        await inbound_q.put(content)
+        agent_response = await outbound_q.get()
+
+        payload = json.dumps({"role": "agent", "content": agent_response}).encode()
+        req = urllib.request.Request(
+            f"{API_BASE}/messages",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req) as resp:
+            result = json.loads(resp.read())
+            print(f"Success: {json.dumps(result)}")
+
+
 async def main(interactive: bool):
+    # Run main agent loop
     asyncio.create_task(main_loop())
+
+    # Run heartbeat loop
+    asyncio.create_task(heartbeat_loop())
 
     if interactive:
         await input_loop()
