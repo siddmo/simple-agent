@@ -65,9 +65,6 @@ def main_loop():
                 continue
             case "/exit":
                 exit(0)
-            case _:
-                print("Unknown command")
-                continue
 
         # 2. Add it as message to messages
         messages.append({"role": "user", "content": user_input})
