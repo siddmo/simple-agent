@@ -1,6 +1,8 @@
 import subprocess
 import json
+import os
 from openai import OpenAI
+import asyncio
 
 client = OpenAI()
 
@@ -29,6 +31,11 @@ system_prompt = "You are a helpful coding assistant. You have access to a bash t
 max_context_size = 128_000
 compaction_threshold = 0.8
 
+
+inbound_q = asyncio.Queue() # Messages intended for agent
+outbound_q = asyncio.Queue() # Messages intended for user
+
+
 # Context Management using compaction
 def compact(messages):
     # Grab the last 5 messages - this is similar to emptying the queue in MemGPT and repopulating it with recent X messages
@@ -48,15 +55,14 @@ def compact(messages):
     # System Prompt + Summary + last 5 messages
     return [messages[0], summary_response.choices[0].message] + last_messages
 
-def main_loop():
+
+async def main_loop():
     # Context
     messages = [{"role": "system", "content": system_prompt}]
 
     while True:
         # 1. Get the user input
-        user_input = input("\nYou: ")
-        if not user_input.strip():
-            continue
+        user_input = await inbound_q.get()
 
         # Support "/" commands
         match user_input:
@@ -64,7 +70,7 @@ def main_loop():
                 messages = compact(messages)
                 continue
             case "/exit":
-                exit(0)
+                os._exit(0)
 
         # 2. Add it as message to messages
         messages.append({"role": "user", "content": user_input})
@@ -85,7 +91,7 @@ def main_loop():
 
             # 5. When the message is not a tool call, show it to the user
             if not msg.tool_calls:
-                print(f"\nAssistant: {msg.content}")
+                await outbound_q.put(msg.content)
                 break
 
             # Process each tool call
@@ -105,5 +111,31 @@ def main_loop():
                     "content": output or "(no output)",
                 })
 
+
+async def input_loop():
+    loop = asyncio.get_event_loop()
+    while True:
+        # Read the agent response from the console
+        # This is plumbing to make sync operation "input" async
+        user_input = await loop.run_in_executor(None, input, "\nYou: ")
+
+        # User input added to the input queue
+        await inbound_q.put(user_input)
+
+        # Wait for the agent response
+        agent_response = await outbound_q.get()
+
+        # Print the agent response to the console
+        print(f"Assistant: {agent_response}")
+
+
+async def main():
+    # Run the main loop in async mode so it executes if there are any messages in the input queue
+    asyncio.create_task(main_loop())
+
+    # Run the input loop which continously fetches and pushes user messages
+    await input_loop()
+
+
 if __name__ == '__main__':
-    main_loop()
+    asyncio.run(main())
