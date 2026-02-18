@@ -45,6 +45,16 @@ Hello, World!
 
 The agent can be used through a web-based chat interface. This requires running three things:
 
+**Quick start (recommended):** Use the restart script to start (or restart) both the backend and frontend in one go:
+
+```bash
+./restart_chat.sh
+```
+
+This kills any already-running backend/frontend processes, then starts fresh instances. Press `Ctrl+C` to stop both.
+
+**Manual start:** If you prefer to start each service individually:
+
 **1. Start the backend**
 
 ```bash
