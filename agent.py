@@ -70,6 +70,7 @@ async def main_loop():
         match user_input:
             case "/compact":
                 messages = compact(messages)
+                await outbound_q.put("")
                 continue
             case "/exit":
                 os._exit(0)
@@ -126,6 +127,10 @@ async def input_loop():
 
         # Wait for the agent response
         agent_response = await outbound_q.get()
+
+        # If agent response is emtpy skip console output
+        if agent_response == "":
+            continue
 
         # Print the agent response to the console
         print(f"Assistant: {agent_response}")
